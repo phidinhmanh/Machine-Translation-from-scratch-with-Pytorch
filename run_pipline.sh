@@ -30,7 +30,7 @@ echo "[1/3] Setting up directories..."
 mkdir -p $DATA_DIR
 mkdir -p $CHECKPOINT_DIR
 # Nếu chưa cài thư viện thì cài luôn (Optional)
-# pip install -r requirements.txt
+pip install -r setup.txt
 
 # 2. PREPROCESSING
 # Bước này tải data và train SentencePiece
@@ -42,6 +42,8 @@ else
     echo "[2/3] Running Preprocessing (Download Data & Train SPM)..."
     python src/preprocess.py
 fi
+
+
 
 # 3. TRAINING
 echo ""

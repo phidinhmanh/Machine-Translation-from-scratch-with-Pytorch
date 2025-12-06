@@ -12,16 +12,15 @@ import numpy as np
 
 # Import model class
 from model import Transformer
-import getpass
 
 # --- CẤU HÌNH API GEMINI (Thay API KEY của em vào đây) ---
 # Nếu không có key, script sẽ bỏ qua phần này
-API_KEY = 'AIzaSyC-nZrm5l4VmA_r76uZMBUPGegXEZ2aGcM'
+GEMINI_API_KEY = 'AIzaSyC-nZrm5l4VmA_r76uZMBUPGegXEZ2aGcM'
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to best_transformer.pth")
-    parser.add_argument("--spm_model", type=str, default="data/spm_opus100_vi_en.model")
+    parser.add_argument("--spm_model", type=str, default="models/spm.model")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--beam_size", type=int, default=3, help="Beam size for decoding")
     parser.add_argument("--max_len", type=int, default=128)
