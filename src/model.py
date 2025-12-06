@@ -50,7 +50,7 @@ class MultiHeadAttention(torch.nn.Module):
 
         attn_scores = torch.matmul(q, k.transpose(-2, -1)) / (self.head_dim ** 0.5)
         if mask is not None:
-            attn_scores = attn_scores.masked_fill(mask == 0, -1e9)
+            attn_scores = attn_scores.masked_fill(mask == 0, -float('inf'))
         attn_probs = F.softmax(attn_scores, dim=-1)
         attn_probs = self.dropout(attn_probs)
         attn_output = torch.matmul(attn_probs, v)
@@ -146,6 +146,7 @@ class Transformer(nn.Module):
         dec_out = self.final_norm(dec_out)
         out = self.linear(dec_out)
         return out
+    
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             nn.init.xavier_uniform_(module.weight)

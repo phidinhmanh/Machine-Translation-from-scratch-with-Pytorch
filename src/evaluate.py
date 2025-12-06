@@ -11,11 +11,12 @@ from datasets import load_dataset
 import numpy as np
 
 # Import model class
-from src.model import Transformer
+from model import Transformer
+import getpass
 
 # --- CẤU HÌNH API GEMINI (Thay API KEY của em vào đây) ---
 # Nếu không có key, script sẽ bỏ qua phần này
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
+API_KEY = 'AIzaSyC-nZrm5l4VmA_r76uZMBUPGegXEZ2aGcM'
 
 def get_args():
     parser = argparse.ArgumentParser()
