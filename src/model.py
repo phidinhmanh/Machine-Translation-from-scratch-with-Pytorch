@@ -146,7 +146,7 @@ class Transformer(nn.Module):
         dec_out = self.final_norm(dec_out)
         out = self.linear(dec_out)
         return out
-    
+
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             nn.init.xavier_uniform_(module.weight)

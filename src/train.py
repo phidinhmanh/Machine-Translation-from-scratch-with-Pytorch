@@ -4,12 +4,13 @@ import torch.optim as optim
 import argparse
 import os
 from tqdm import tqdm
+from datasets import load_dataset
 
 # Import các module em đã viết
 # Giả sử file Transformer nằm ở src/model.py
 # Giả sử hàm get_dataloader nằm ở src/data_loader.py
 from model import Transformer  
-from preprocess import train_loader, val_loader
+from preprocess import getdata_loader
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train Transformer Vi-En")
@@ -117,6 +118,9 @@ def main():
     # 1. Load Data
     # Lưu ý: Em phải chắc chắn máy có internet để load opus100, hoặc trỏ vào local
     print("⏳ Loading Datasets...")
+    datasets = load_dataset("opus100", "en-vi")
+    train_loader = getdata_loader(datasets, batch_size=args.batch_size, max_len=args.max_len, shuffle=True, type='train')
+    val_loader = getdata_loader(datasets, batch_size=args.batch_size, max_len=args.max_len, shuffle=False, type='validation')
     
     
     # 2. Init Model

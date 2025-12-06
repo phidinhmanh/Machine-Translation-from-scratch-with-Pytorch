@@ -1,6 +1,4 @@
-#!/bin/bash
 
-# --- CẤU HÌNH PIPELINE (Sửa tham số tại đây) ---
 PROJECT_NAME="vi_en_transformer"
 DATA_DIR="models"
 CHECKPOINT_DIR="checkpoints"
@@ -17,7 +15,6 @@ LEARNING_RATE=3e-4
 
 PAD_IDX=0
 
-# Dừng script ngay lập tức nếu có lệnh bị lỗi
 set -e
 
 echo "========================================================"
