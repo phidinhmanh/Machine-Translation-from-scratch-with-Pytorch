@@ -1,0 +1,8 @@
+transformers
+datasets
+sentencepiece
+sacrebleu
+accelerate
+matplotlib 
+google-generativeai 
+tqdm
