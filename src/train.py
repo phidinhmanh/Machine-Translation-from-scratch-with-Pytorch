@@ -94,8 +94,8 @@ def evaluate(model, loader, criterion, device):
     
     with torch.no_grad():
         for batch in loader:
-            src = batch['src'].to(device)
-            tgt = batch['tgt'].to(device)
+            src = batch['src_ids'].to(device)
+            tgt = batch['tgt_ids'].to(device)
             
             decoder_input = tgt[:, :-1]
             labels = tgt[:, 1:]
