@@ -4,7 +4,6 @@ from torch.nn.utils.rnn import pad_sequence
 from datasets import load_dataset
 
 
-dataset = load_dataset("opus100", "en-vi")
 model_file = "models/spm.model"
 sp = spm.SentencePieceProcessor()
 sp.load(model_file) # type: ignore
@@ -63,16 +62,6 @@ def getdata_loader(datasets, batch_size=32, max_len = 128, shuffle = True, type=
     dataset  = TranslationDataset(sp, datasets, type=type, max_len=max_len)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
     return dataloader
-
-train_loader = getdata_loader(dataset, type='train')
-val_loader = getdata_loader(dataset, type='validation')
-test_loader = getdata_loader(dataset, type='test')
-
-sample = next(iter(train_loader))
-print(sample['src_ids'].shape)
-print(sample['tgt_ids'].shape)
-print(sample['src_mask'].shape)
-print(sample['tgt_mask'].shape)
 
 
 
