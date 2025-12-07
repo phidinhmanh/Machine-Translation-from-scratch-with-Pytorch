@@ -100,7 +100,7 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
                 print(f"Gradient is zero for {name}")
                 break
         # check memory available
-        print(f"Memory available: {torch.cuda.memory_allocated() / 1e9}")
+        # print(f"Memory available: {torch.cuda.memory_allocated() / 1e9}")
 
         # check loss is nan
         if torch.isnan(loss):
