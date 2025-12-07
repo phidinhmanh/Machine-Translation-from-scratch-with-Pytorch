@@ -53,10 +53,7 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
 
     optimizer.zero_grad()
 
-    loop = tqdm(loader, desc=f"Training Epoch {epoch}", mininterval=100)
-
-    for step, batch in enumerate(loop):
-        # 1. Lấy dữ liệu & đẩy lên GPU
+    for step, batch in enumerate(loader):
         src = batch["src_ids"].to(device)
         tgt = batch["tgt_ids"].to(device)
 
@@ -90,7 +87,6 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
 
         # 5. Logging
         total_loss += loss.item()
-        loop.set_postfix(loss=loss.item())
 
         # check gradient
         for name, param in model.named_parameters():
