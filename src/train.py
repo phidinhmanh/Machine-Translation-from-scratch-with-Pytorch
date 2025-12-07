@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import argparse
 import os
-from tqdm import tqdm
+import gc
 from datasets import load_dataset
 from model import Transformer
 from preprocess import getdata_loader
@@ -197,6 +197,8 @@ def main():
         train_loss = train_one_epoch(
             model, train_loader, optimizer, criterion, scaler, args.device, epoch
         )
+        gc.collect()
+        torch.cuda.empty_cache()
         # Validate
         val_loss = evaluate(model, val_loader, criterion, args.device)
         # Update LR
