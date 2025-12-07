@@ -5,7 +5,7 @@ CHECKPOINT_DIR="checkpoints"
 SPM_MODEL_PATH="$DATA_DIR/spm.model"
 
 # Tham số Model & Train
-VOCAB_SIZE=8000
+VOCAB_SIZE=7000
 EMBED_DIM=64
 HEADS=4
 LAYERS=3

@@ -10,6 +10,14 @@ sp.load(model_file)  # type: ignore
 unk_id = sp.unk_id()  # Unknown token
 bos_id = sp.bos_id()  # Beginning of Sentence
 eos_id = sp.eos_id()  # End of Sentence
+pad_id = sp.pad_id()  # Padding Token
+
+if pad_id == -1:
+    # Fallback if model doesn't have PAD defined (legacy)
+    pad_id = unk_id
+    print(f"WARNING: PAD ID is undefined (-1). Using UNK ID ({unk_id}) as padding.")
+else:
+    print(f"Using PAD ID: {pad_id}")
 
 
 class TranslationDataset(torch.utils.data.Dataset):
@@ -59,7 +67,7 @@ class Collectfn:
 
 
 def getdata_loader(datasets, batch_size=32, max_len=128, shuffle=True, type="train"):
-    collate_fn = Collectfn(unk_id)
+    collate_fn = Collectfn(pad_id)
     dataset = TranslationDataset(sp, datasets, type=type, max_len=max_len)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn

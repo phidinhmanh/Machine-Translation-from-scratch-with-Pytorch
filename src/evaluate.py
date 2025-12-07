@@ -41,7 +41,7 @@ def get_args():
     )
 
     # Model params (Phải khớp với lúc train)
-    parser.add_argument("--vocab_size", type=int, default=8000)
+    parser.add_argument("--vocab_size", type=int, default=7000)
     parser.add_argument("--embed_dim", type=int, default=128)
     parser.add_argument("--heads", type=int, default=4)
     parser.add_argument("--layers", type=int, default=3)

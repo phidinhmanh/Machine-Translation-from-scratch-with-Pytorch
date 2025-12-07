@@ -24,7 +24,7 @@ def get_args():
     # Data params
     parser.add_argument("--max_len", type=int, default=128, help="Max sequence length")
     parser.add_argument(
-        "--vocab_size", type=int, default=8000, help="Vocab size (khớp với SPM)"
+        "--vocab_size", type=int, default=7000, help="Vocab size (khớp với SPM)"
     )
 
     # Model params
@@ -78,26 +78,35 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
         # 4. Backward Pass (Backward + Optimize)
         scaler.scale(loss).backward()
 
+        loss_val = loss.item() * ACCUMULATION_STEPS
+        total_loss += loss_val
+
         if (step + 1) % ACCUMULATION_STEPS == 0:
             scaler.unscale_(optimizer)
+
+            # Calculate Grad Norm BEFORE clipping but AFTER unscaling
+            grad_norm = 0.0
+            first_layer_grad = list(model.parameters())[0].grad
+            if first_layer_grad is not None:
+                grad_norm = first_layer_grad.norm().item()
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
 
-        # 5. Logging
-        loss_val = loss.item() * ACCUMULATION_STEPS
-        total_loss += loss_val
+            # 5. Logging (Only log when we step)
+            if (step + 1) % 100 == 0:
+                print(
+                    f"Step {step} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
+                )
 
-        first_layer_grad = list(model.parameters())[0].grad
-        if first_layer_grad is not None:
-            grad_norm = first_layer_grad.norm().item()
-            print(f"Step {step} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}")
         # check memory available
         # print(f"Memory available: {torch.cuda.memory_allocated() / 1e9}")
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache() # Calling this too often slows down training
+
         # check loss is nan
-        if step % 100 == 0 and torch.isnan(loss):
+        if torch.isnan(loss):
             print("Loss is NaN")
             break
         # if step == 200:
