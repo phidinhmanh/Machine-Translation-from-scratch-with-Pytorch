@@ -53,30 +53,22 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
 
     optimizer.zero_grad()
 
-    for step, batch in enumerate(
-        tqdm(loader, desc=f"Training Epoch {epoch}", mininterval=100)
-    ):
+    loop = tqdm(loader, desc=f"Training Epoch {epoch}", mininterval=100)
+
+    for step, batch in enumerate(loop):
         # 1. Lấy dữ liệu & đẩy lên GPU
-        # src: [Batch, Src_Len]
-        # tgt: [Batch, Tgt_Len] (Gồm cả BOS và EOS)
         src = batch["src_ids"].to(device)
         tgt = batch["tgt_ids"].to(device)
 
-        # 2. Chuẩn bị Input và Label (Teacher Forcing)
-        # Input vào Decoder: Bỏ token CUỐI (EOS) -> [BOS, A, B, C]
         decoder_input = tgt[:, :-1]
-
-        # Label để tính Loss: Bỏ token ĐẦU (BOS) -> [A, B, C, EOS]
         labels = tgt[:, 1:]
 
-        # 3. Forward Pass (Dùng Mixed Precision cho nhanh)
         if step % 4 == 0:
             optimizer.zero_grad()
 
         with torch.amp.autocast_mode.autocast(
             enabled=(device == "cuda"), device_type=device
         ):
-            # Output: [Batch, Seq_Len, Vocab_Size]
             output = model(src, decoder_input)
 
             # print(f"Is NaN: {torch.isnan(output).any()}")
