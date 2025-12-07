@@ -53,15 +53,14 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
 
     optimizer.zero_grad()
 
+    ACCUMULATION_STEPS = 4
+
     for step, batch in enumerate(loader):
         src = batch["src_ids"].to(device)
         tgt = batch["tgt_ids"].to(device)
 
         decoder_input = tgt[:, :-1]
         labels = tgt[:, 1:]
-
-        if step % 4 == 0:
-            optimizer.zero_grad()
 
         with torch.amp.autocast_mode.autocast(
             enabled=(device == "cuda"), device_type=device
@@ -75,39 +74,35 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
             # Output: [Batch * Seq_Len, Vocab]
             # Labels: [Batch * Seq_Len]
             loss = criterion(output.reshape(-1, output.shape[-1]), labels.reshape(-1))
-
+            loss = loss / ACCUMULATION_STEPS
         # 4. Backward Pass (Backward + Optimize)
         scaler.scale(loss).backward()
 
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-        scaler.step(optimizer)
-        scaler.update()
+        if (step + 1) % ACCUMULATION_STEPS == 0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
 
         # 5. Logging
-        total_loss += loss.item()
+        loss_val = loss.item() * ACCUMULATION_STEPS
+        total_loss += loss_val
 
-        # check gradient
-        for name, param in model.named_parameters():
-            if param.grad is None:
-                print(f"Gradient is None for {name}")
-                break
-            if param.grad.isnan().any():
-                print(f"Gradient is NaN for {name}")
-                break
-            if param.grad.sum() == 0:
-                print(f"Gradient is zero for {name}")
-                break
+        first_layer_grad = list(model.parameters())[0].grad
+        if first_layer_grad is not None:
+            grad_norm = first_layer_grad.norm().item()
+            print(f"Step {step} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}")
         # check memory available
         # print(f"Memory available: {torch.cuda.memory_allocated() / 1e9}")
-
+        torch.cuda.empty_cache()
         # check loss is nan
-        if torch.isnan(loss):
+        if step % 100 == 0 and torch.isnan(loss):
             print("Loss is NaN")
             break
         # if step == 200:
         #     return total_loss / 200
+        del src, tgt, decoder_input, labels, output, loss
 
     return total_loss / len(loader)
 
@@ -168,7 +163,6 @@ def main():
         device=args.device,  # Cần thiết cho việc tạo mask
     ).to(args.device)
 
-    # Đếm tham số chơi cho vui
     print(
         f"Test Parameter Count: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
     )
