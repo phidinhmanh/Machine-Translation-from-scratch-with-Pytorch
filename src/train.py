@@ -51,12 +51,11 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
     model.train()
     total_loss = 0
 
-    # Thanh progress bar
-    loop = tqdm(loader, desc=f"Training Epoch {epoch}")
-
     optimizer.zero_grad()
 
-    for step, batch in enumerate(loop):
+    for step, batch in enumerate(
+        tqdm(loader, desc=f"Training Epoch {epoch}", mininterval=100)
+    ):
         # 1. Lấy dữ liệu & đẩy lên GPU
         # src: [Batch, Src_Len]
         # tgt: [Batch, Tgt_Len] (Gồm cả BOS và EOS)
