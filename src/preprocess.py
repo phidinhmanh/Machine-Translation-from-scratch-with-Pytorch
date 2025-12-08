@@ -36,9 +36,9 @@ class TranslationDataset(torch.utils.data.Dataset):
         vi_ids = [bos_id] + self.sp.encode_as_ids(vi_text) + [eos_id]
         # truncate
         if len(en_ids) > self.max_len:
-            en_ids = en_ids[: self.max_len]
+            en_ids = en_ids[: self.max_len - 1] + [eos_id]
         if len(vi_ids) > self.max_len:
-            vi_ids = vi_ids[: self.max_len]
+            vi_ids = vi_ids[: self.max_len - 1] + [eos_id]
         return {"src_ids": torch.tensor(en_ids), "tgt_ids": torch.tensor(vi_ids)}
 
 
