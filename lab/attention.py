@@ -1,6 +1,5 @@
 import torch.nn as nn
 import torch
-import torch.nn.functional as F
 import seaborn as sns
 import matplotlib.pyplot as plt
 

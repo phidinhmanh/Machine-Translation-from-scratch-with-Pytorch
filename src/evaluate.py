@@ -106,20 +106,13 @@ def beam_search_decode(model, src, sp, device, beam_size=3, max_len=128):
             # Dùng LogSoftmax để cộng điểm cho dễ (thay vì nhân xác suất)
             probs = torch.log_softmax(out[:, -1, :], dim=-1).squeeze()
 
-            # --- Repetition Penalty ---
-            # Penalize tokens that are already generated
-            for i in range(beam_size):
-                # Current beam sequence
-                current_seq_tokens = k_candidates[-1][0]
-                for token_id in current_seq_tokens:
-                    # Apply penalty: if score < 0 (log prob), we multiple by penalty > 1 to make it more negative
-                    # or subtract a positive penalty.
-                    # Simple substraction:
+            if len(seq) > 1:
+                for token_id in seq:
                     probs[token_id] -= 1.2
+            # ----------------------------------------
 
             # Lấy top-k token tốt nhất tiếp theo
             topk_probs, topk_ids = torch.topk(probs, beam_size)
-
             for i in range(beam_size):
                 token = topk_ids[i]
                 prob = topk_probs[i].item()
@@ -141,7 +134,6 @@ def beam_search_decode(model, src, sp, device, beam_size=3, max_len=128):
         # Nếu tất cả các beam đều đã gặp EOS thì dừng sớm
         if all(c[0][-1].item() == eos_id for c in k_candidates):
             break
-
     # Lấy sequence có điểm cao nhất
     best_seq = k_candidates[0][0]
     return best_seq.cpu().tolist()
