@@ -177,7 +177,7 @@ class Transformer(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
         elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0, std=0.1)
+            nn.init.normal_(module.weight, mean=0, std=0.02)
 
         elif isinstance(module, nn.RMSNorm):
             nn.init.constant_(module.weight, 1.0)

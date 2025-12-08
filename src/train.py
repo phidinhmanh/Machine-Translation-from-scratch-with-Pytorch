@@ -47,7 +47,9 @@ def get_args():
     return parser.parse_args()
 
 
-def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
+def train_one_epoch(
+    model, scheduler, loader, optimizer, criterion, scaler, device, epoch
+):
     model.train()
     total_loss = 0
 
@@ -67,12 +69,6 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
         ):
             output = model(src, decoder_input)
 
-            # print(f"Is NaN: {torch.isnan(output).any()}")
-            # print(f"min and max: {output.min().item()}, {output.max().item()}")
-
-            # Reshape để tính Loss
-            # Output: [Batch * Seq_Len, Vocab]
-            # Labels: [Batch * Seq_Len]
             loss = criterion(output.reshape(-1, output.shape[-1]), labels.reshape(-1))
             loss = loss / ACCUMULATION_STEPS
         # 4. Backward Pass (Backward + Optimize)
@@ -93,9 +89,9 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
             optimizer.zero_grad()
 
-            # 5. Logging (Only log when we step)
             if (step + 1) % 1000 == 0:
                 print(
                     f"Step {step} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
@@ -178,34 +174,38 @@ def main():
 
     # 3. Setup Training
     # AdamW là chân ái cho Transformer (Weight Decay giúp chống Overfit)
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=1.0, betas=(0.9, 0.98), eps=1e-9)
 
-    # Loss function: Ignore index 0 (PAD) để không tính điểm cho padding
+    def noam_lr_lambda(step):
+        step_num = max(1, step)
+        warmup_steps = 4000
+        d_model = args.embed_dim
+
+        return (d_model**-0.5) * min(step_num**-0.5, step_num * (warmup_steps**-1.5))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=noam_lr_lambda)
+
     criterion = nn.CrossEntropyLoss(ignore_index=args.pad_idx, label_smoothing=0.1)
 
-    # Scaler cho Mixed Precision
     scaler = torch.amp.grad_scaler.GradScaler(enabled=(args.device == "cuda"))
 
-    # Scheduler (Giảm LR khi Loss không giảm nữa)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2
-    )
-
-    # 4. Training Loop
     best_val_loss = float("inf")
 
     print("🔥 Start Training...")
     for epoch in range(1, args.epochs + 1):
-        # Train
         train_loss = train_one_epoch(
-            model, train_loader, optimizer, criterion, scaler, args.device, epoch
+            model,
+            scheduler,
+            train_loader,
+            optimizer,
+            criterion,
+            scaler,
+            args.device,
+            epoch,
         )
         gc.collect()
         torch.cuda.empty_cache()
-        # Validate
         val_loss = evaluate(model, val_loader, criterion, args.device)
-        # Update LR
-        scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
         print(
@@ -216,7 +216,6 @@ def main():
             f"Epoch {epoch} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {current_lr:.6f}"
         )
 
-        # Save Best Model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             save_path = os.path.join(args.save_dir, "best_transformer.pth")
