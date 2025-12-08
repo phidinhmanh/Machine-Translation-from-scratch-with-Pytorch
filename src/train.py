@@ -30,7 +30,7 @@ def get_args():
     # Model params
     parser.add_argument("--embed_dim", type=int, default=128)
     parser.add_argument("--heads", type=int, default=4)
-    parser.add_argument("--layers", type=int, default=3)
+    parser.add_argument("--layers", type=int, default=6)
     parser.add_argument("--ff_expansion", type=int, default=4)
     parser.add_argument("--dropout", type=float, default=0.1)
 
@@ -96,7 +96,7 @@ def train_one_epoch(model, loader, optimizer, criterion, scaler, device, epoch):
             optimizer.zero_grad()
 
             # 5. Logging (Only log when we step)
-            if (step + 1) % 100 == 0:
+            if (step + 1) % 1000 == 0:
                 print(
                     f"Step {step} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
                 )

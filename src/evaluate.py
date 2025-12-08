@@ -8,6 +8,7 @@ import google.generativeai as genai
 from tqdm import tqdm
 from datasets import load_dataset
 from model import Transformer
+import math
 
 
 # import getpass
@@ -63,7 +64,9 @@ def beam_search_decode(model, src, sp, device, beam_size=3, max_len=128):
     # Encoder output chỉ cần tính 1 lần
     with torch.no_grad():
         src_mask = model.make_src_mask(src)
-        enc_out = model.dropout(model.pos_encoder(model.embedding(src)))
+        enc_out = model.dropout(
+            model.pos_encoder(model.embedding(src) * math.sqrt(model.embed_dim))
+        )
         for layer in model.transformer_encoder:
             enc_out = layer(enc_out, src_mask)
         # Final Norm encoder
@@ -88,7 +91,11 @@ def beam_search_decode(model, src, sp, device, beam_size=3, max_len=128):
             tgt_input = seq.unsqueeze(0)
             tgt_mask = model.make_trg_mask(tgt_input)
 
-            dec_out = model.dropout(model.pos_encoder(model.embedding(tgt_input)))
+            dec_out = model.dropout(
+                model.pos_encoder(
+                    model.embedding(tgt_input) * math.sqrt(model.embed_dim)
+                )
+            )
             for layer in model.transformer_decoder:
                 dec_out = layer(dec_out, tgt_mask, context=enc_out, src_mask=src_mask)
 
@@ -99,6 +106,17 @@ def beam_search_decode(model, src, sp, device, beam_size=3, max_len=128):
             # Dùng LogSoftmax để cộng điểm cho dễ (thay vì nhân xác suất)
             probs = torch.log_softmax(out[:, -1, :], dim=-1).squeeze()
 
+            # --- Repetition Penalty ---
+            # Penalize tokens that are already generated
+            for i in range(beam_size):
+                # Current beam sequence
+                current_seq_tokens = k_candidates[i][0]
+                for token_id in current_seq_tokens:
+                    # Apply penalty: if score < 0 (log prob), we multiple by penalty > 1 to make it more negative
+                    # or subtract a positive penalty.
+                    # Simple substraction:
+                    probs[token_id] -= 1.2
+
             # Lấy top-k token tốt nhất tiếp theo
             topk_probs, topk_ids = torch.topk(probs, beam_size)
 
@@ -108,6 +126,10 @@ def beam_search_decode(model, src, sp, device, beam_size=3, max_len=128):
 
                 # Tạo sequence mới
                 new_seq = torch.cat([seq, token.unsqueeze(0)], dim=0)
+
+                # --- Length Penalty --- (Optional optimization: divide score by len^alpha)
+                # But here we just accumulate score.
+
                 new_score = score + prob  # Cộng log prob
                 new_candidates.append((new_seq, new_score))
 

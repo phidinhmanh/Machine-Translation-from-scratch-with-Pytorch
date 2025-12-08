@@ -34,6 +34,11 @@ class TranslationDataset(torch.utils.data.Dataset):
         vi_text = self.dataset[index]["translation"]["vi"]
         en_ids = [bos_id] + self.sp.encode_as_ids(en_text) + [eos_id]
         vi_ids = [bos_id] + self.sp.encode_as_ids(vi_text) + [eos_id]
+        # truncate
+        if len(en_ids) > self.max_len:
+            en_ids = en_ids[: self.max_len]
+        if len(vi_ids) > self.max_len:
+            vi_ids = vi_ids[: self.max_len]
         return {"src_ids": torch.tensor(en_ids), "tgt_ids": torch.tensor(vi_ids)}
 
 
@@ -72,4 +77,6 @@ def getdata_loader(datasets, batch_size=32, max_len=128, shuffle=True, type="tra
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
     )
+    # max_len
+
     return dataloader

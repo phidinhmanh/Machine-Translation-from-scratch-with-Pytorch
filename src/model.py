@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 
 class PositionalEncoding(nn.Module):
@@ -92,18 +93,19 @@ class TransformerBlock(nn.Module):
         self.dropout3 = nn.Dropout(dropout)
 
     def forward(self, x, mask, context=None, src_mask=None):
-        atten_out = self.self_attn(x, mask=mask)
+        # Pre-LN: Norm -> Attn -> Add
+        norm_x = self.norm1(x)
+        atten_out = self.self_attn(norm_x, mask=mask)
         x = x + self.dropout1(atten_out)
-        x = self.norm1(x)
 
         if self.is_decoder:
-            cross_atten_out = self.cross_attn(x, mask=src_mask, context=context)
+            norm_x = self.norm2(x)
+            cross_atten_out = self.cross_attn(norm_x, mask=src_mask, context=context)
             x = x + self.dropout2(cross_atten_out)
-            x = self.norm2(x)
 
-        feedforward_out = self.feedforward(x)
+        norm_x = self.norm3(x)
+        feedforward_out = self.feedforward(norm_x)
         x = x + self.dropout3(feedforward_out)
-        x = self.norm3(x)
         return x
 
 
@@ -153,8 +155,12 @@ class Transformer(nn.Module):
         src_mask = self.make_src_mask(src)
         trg_mask = self.make_trg_mask(trg)
 
-        enc_out = self.dropout(self.pos_encoder(self.embedding(src)))
-        dec_out = self.dropout(self.pos_encoder(self.embedding(trg)))
+        enc_out = self.dropout(
+            self.pos_encoder(self.embedding(src) * math.sqrt(self.embed_dim))
+        )
+        dec_out = self.dropout(
+            self.pos_encoder(self.embedding(trg) * math.sqrt(self.embed_dim))
+        )
 
         for layer in self.transformer_encoder:
             enc_out = layer(enc_out, src_mask)
