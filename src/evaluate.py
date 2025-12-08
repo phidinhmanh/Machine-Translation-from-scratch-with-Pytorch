@@ -110,7 +110,7 @@ def beam_search_decode(model, src, sp, device, beam_size=3, max_len=128):
             # Penalize tokens that are already generated
             for i in range(beam_size):
                 # Current beam sequence
-                current_seq_tokens = k_candidates[i][0]
+                current_seq_tokens = k_candidates[-1][0]
                 for token_id in current_seq_tokens:
                     # Apply penalty: if score < 0 (log prob), we multiple by penalty > 1 to make it more negative
                     # or subtract a positive penalty.
