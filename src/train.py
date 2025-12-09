@@ -127,8 +127,6 @@ def train_one_epoch(
 
     optimizer.zero_grad()
 
-    ACCUMULATION_STEPS = 4
-
     for step, batch in enumerate(loader):
         # --- FIX: LOGIC SKIP CHUẨN ---
         # start_step được load từ checkpoint là (step cũ + 1)
@@ -152,39 +150,38 @@ def train_one_epoch(
         ):
             output = model(src, decoder_input)
             loss = criterion(output.reshape(-1, output.shape[-1]), labels.reshape(-1))
-            loss = loss / ACCUMULATION_STEPS
+            loss = loss
 
         scaler.scale(loss).backward()
 
-        loss_val = loss.item() * ACCUMULATION_STEPS
+        loss_val = loss.item()
         total_loss += loss_val
         steps_counted += 1
 
         # Accumulation Update
-        if (step + 1) % ACCUMULATION_STEPS == 0:
-            scaler.unscale_(optimizer)
+        scaler.unscale_(optimizer)
 
-            # Check Grad Norm
-            grad_norm = 0.0
-            first_layer_grad = list(model.parameters())[0].grad
-            if first_layer_grad is not None:
-                grad_norm = first_layer_grad.norm().item()
+        # Check Grad Norm
+        grad_norm = 0.0
+        first_layer_grad = list(model.parameters())[0].grad
+        if first_layer_grad is not None:
+            grad_norm = first_layer_grad.norm().item()
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
-            optimizer.zero_grad()
+        scaler.step(optimizer)
+        scaler.update()
+        scheduler.step()
+        optimizer.zero_grad()
 
-            # Logging
-            if (step + 1) % 1000 == 0:
-                logger.info(
-                    f"Step {step} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
-                )
-                print(
-                    f"Step {step}/{len(loader)} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
-                )
+        # Logging
+        if (step + 1) % 1000 == 0:
+            logger.info(
+                f"Step {step} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
+            )
+            print(
+                f"Step {step}/{len(loader)} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
+            )
 
             # Checkpoint Callback
             if checkpoint_callback is not None:
