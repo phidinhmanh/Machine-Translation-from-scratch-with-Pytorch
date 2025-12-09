@@ -166,8 +166,7 @@ def get_gemini_score(source, reference, candidate):
         response = model.generate_content(prompt)
         score = int(response.text.strip())
         return score
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
         return 50  # Fallback nếu lỗi
 
 
@@ -235,8 +234,6 @@ def main():
         references.append(tgt_text)
         candidates.append(pred_text)
 
-        # Chấm điểm Gemini (Optional - tốn tiền/quota)
-        # Chỉ chấm 10 câu đầu để demo
         if len(gemini_scores) < 10:
             g_score = get_gemini_score(src_text, tgt_text, pred_text)
             if g_score is not None:
