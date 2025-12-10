@@ -5,6 +5,7 @@ import argparse
 import os
 import gc
 import time
+import math
 from datasets import load_dataset
 from model import Transformer
 from preprocess import getdata_loader
@@ -64,7 +65,6 @@ def save_checkpoint(
     model,
     optimizer,
     scheduler,
-    scaler,
     epoch,
     step,
     best_val_loss,
@@ -76,9 +76,9 @@ def save_checkpoint(
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
-        "scaler_state_dict": scaler.state_dict(),
+        # "scaler_state_dict": scaler.state_dict(), # REMOVED SCALER
         "epoch": epoch,
-        "step": step,  # Lưu step kế tiếp cần chạy
+        "step": step,
         "best_val_loss": best_val_loss,
         "elapsed_time": elapsed_time,
     }
@@ -87,16 +87,15 @@ def save_checkpoint(
     print(f"💾 Checkpoint saved to {save_path}")
 
 
-def load_checkpoint(checkpoint_path, model, optimizer, scheduler, scaler, device):
+def load_checkpoint(checkpoint_path, model, optimizer, scheduler, device):
     """Load training checkpoint to resume training."""
     print(f"📂 Loading checkpoint from {checkpoint_path}...")
-    # weights_only=False để load full object (cần thiết cho optimizer/scheduler)
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
     model.load_state_dict(checkpoint["model_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-    scaler.load_state_dict(checkpoint["scaler_state_dict"])
+    # scaler.load_state_dict(checkpoint["scaler_state_dict"]) # REMOVED SCALER
 
     start_epoch = checkpoint["epoch"]
     start_step = checkpoint.get("step", 0)
@@ -115,7 +114,6 @@ def train_one_epoch(
     loader,
     optimizer,
     criterion,
-    scaler,
     device,
     epoch,
     start_step=0,
@@ -128,9 +126,7 @@ def train_one_epoch(
     optimizer.zero_grad()
 
     for step, batch in enumerate(loader):
-        # --- FIX: LOGIC SKIP CHUẨN ---
-        # start_step được load từ checkpoint là (step cũ + 1)
-        # Nếu step hiện tại < start_step, nghĩa là đã train rồi -> Skip
+        # Skip logic
         if step < start_step:
             continue
 
@@ -145,32 +141,37 @@ def train_one_epoch(
         decoder_input = tgt[:, :-1]
         labels = tgt[:, 1:]
 
-        with torch.amp.autocast_mode.autocast(
-            enabled=(device == "cuda"), device_type=device
-        ):
-            output = model(src, decoder_input)
-            loss = criterion(output.reshape(-1, output.shape[-1]), labels.reshape(-1))
-            loss = loss
+        # --- FIX: REMOVED AUTOCAST (Run in FP32) ---
+        # Forward pass directly
+        output = model(src, decoder_input)
+        loss = criterion(output.reshape(-1, output.shape[-1]), labels.reshape(-1))
 
-        scaler.scale(loss).backward()
+        # --- FIX: STANDARD BACKWARD (No Scaler) ---
+        loss.backward()
 
         loss_val = loss.item()
+
+        # NaN Detection
+        if math.isnan(loss_val) or math.isinf(loss_val):
+            print(f"❌ NaN/Inf detected at step {step}! Stopping training.")
+            return float("nan")
+
         total_loss += loss_val
         steps_counted += 1
 
-        # Accumulation Update
-        scaler.unscale_(optimizer)
+        # Check Gradient Norm
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        grad_norm = grad_norm.item() if hasattr(grad_norm, "item") else float(grad_norm)
 
-        # Check Grad Norm
-        grad_norm = 0.0
-        first_layer_grad = list(model.parameters())[0].grad
-        if first_layer_grad is not None:
-            grad_norm = first_layer_grad.norm().item()
+        # Skip update if grad is corrupted
+        if math.isnan(grad_norm) or math.isinf(grad_norm):
+            print(f"⚠️ NaN/Inf gradient at step {step}, skipping update.")
+            optimizer.zero_grad()
+            del src, tgt, decoder_input, labels, output, loss
+            continue
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-        scaler.step(optimizer)
-        scaler.update()
+        # --- FIX: STANDARD OPTIMIZER STEP (No Scaler) ---
+        optimizer.step()
         scheduler.step()
         optimizer.zero_grad()
 
@@ -183,18 +184,9 @@ def train_one_epoch(
                 f"Step {step}/{len(loader)} | Loss: {loss_val:.4f} | Grad Norm: {grad_norm:.4f}"
             )
 
-            # Checkpoint Callback
             if checkpoint_callback is not None:
-                # --- FIX: LƯU STEP + 1 ---
-                # Để lần sau resume sẽ bắt đầu từ step tiếp theo
                 checkpoint_callback(epoch, step + 1)
 
-        # Check NaN
-        if torch.isnan(loss):
-            print("❌ Loss is NaN")
-            break
-
-        # Cleanup
         del src, tgt, decoder_input, labels, output, loss
 
     return total_loss / max(steps_counted, 1)
@@ -255,26 +247,24 @@ def main():
         device=args.device,
     ).to(args.device)
 
-    # Init Weights (Optional but recommended for deep models)
-    # model.apply(model._init_weights)
-
     print(
         f"Test Parameter Count: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
     )
 
     # Setup Training
-    # lr=1.0 cho Noam Scheduler
     optimizer = optim.Adam(model.parameters(), lr=1.0, betas=(0.9, 0.98), eps=1e-9)
 
     def noam_lr_lambda(step):
         step_num = max(1, step)
-        warmup_steps = 4000  # Tăng lên 8000 nếu model to hơn
+        warmup_steps = 4000
         d_model = args.embed_dim
         return (d_model**-0.5) * min(step_num**-0.5, step_num * (warmup_steps**-1.5))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=noam_lr_lambda)
     criterion = nn.CrossEntropyLoss(ignore_index=args.pad_idx, label_smoothing=0.1)
-    scaler = torch.amp.grad_scaler.GradScaler(enabled=(args.device == "cuda"))
+
+    # --- FIX: REMOVED SCALER INIT ---
+    # scaler = torch.amp.grad_scaler.GradScaler(...) # DELETED
 
     # State Variables
     best_val_loss = float("inf")
@@ -284,15 +274,14 @@ def main():
 
     # Resume Logic
     if args.resume_checkpoint and os.path.exists(args.resume_checkpoint):
+        # Update load_checkpoint call signature
         start_epoch, start_step, best_val_loss, previous_elapsed_time = load_checkpoint(
-            args.resume_checkpoint, model, optimizer, scheduler, scaler, args.device
+            args.resume_checkpoint, model, optimizer, scheduler, args.device
         )
 
-        # Nếu step = 0, nghĩa là đã hoàn thành epoch trước -> Tăng epoch lên 1
         if start_step == 0:
             start_epoch += 1
 
-        # Đảm bảo model ở chế độ train sau khi load
         model.train()
 
     # Timer Setup
@@ -307,20 +296,18 @@ def main():
         nonlocal last_checkpoint_time
         current_time = time.time()
 
-        # Check time interval
         if (current_time - last_checkpoint_time) >= checkpoint_interval_seconds:
             total_elapsed = get_total_elapsed_time()
 
-            # Save Time-based Checkpoint
             chk_path = os.path.join(
                 args.save_dir,
                 f"checkpoint_epoch{epoch}_step{step}_time{total_elapsed / 3600:.1f}h.pth",
             )
+            # Update save_checkpoint call signature
             save_checkpoint(
                 model,
                 optimizer,
                 scheduler,
-                scaler,
                 epoch,
                 step,
                 best_val_loss,
@@ -328,13 +315,11 @@ def main():
                 chk_path,
             )
 
-            # Save Latest (Overwrite)
             latest_path = os.path.join(args.save_dir, "latest_checkpoint.pth")
             save_checkpoint(
                 model,
                 optimizer,
                 scheduler,
-                scaler,
                 epoch,
                 step,
                 best_val_loss,
@@ -345,32 +330,27 @@ def main():
             last_checkpoint_time = current_time
             print(f"⏰ Checkpoint saved. Total time: {total_elapsed / 3600:.2f}h")
 
-    print("🔥 Start Training...")
+    print("🔥 Start Training (FP32 Mode)...")
 
     for epoch in range(start_epoch, args.epochs + 1):
-        # Xác định start_step cho epoch này
-        # Nếu epoch hiện tại == start_epoch (lúc resume), thì dùng start_step đã load
-        # Các epoch sau thì start_step luôn là 0
         epoch_start_step = start_step if epoch == start_epoch else 0
 
+        # Update train_one_epoch call signature
         train_loss = train_one_epoch(
             model,
             scheduler,
             train_loader,
             optimizer,
             criterion,
-            scaler,
-            args.device,
+            args.device,  # Removed scaler
             epoch,
             start_step=epoch_start_step,
             checkpoint_callback=checkpoint_callback,
         )
 
-        # Dọn rác
         gc.collect()
         torch.cuda.empty_cache()
 
-        # Evaluate
         val_loss = evaluate(model, val_loader, criterion, args.device)
         current_lr = optimizer.param_groups[0]["lr"]
         total_time = get_total_elapsed_time()
@@ -385,21 +365,22 @@ def main():
             f"LR: {current_lr:.6f} | Time: {total_time / 3600:.2f}h"
         )
 
-        # Save Best
-        if val_loss < best_val_loss:
+        if math.isnan(train_loss):
+            print("❌ Training stopped due to NaN loss.")
+            break
+
+        if val_loss < best_val_loss and not math.isnan(val_loss):
             best_val_loss = val_loss
             torch.save(
                 model.state_dict(), os.path.join(args.save_dir, "best_transformer.pth")
             )
             print("✅ Saved Best Model")
 
-        # Save End of Epoch Checkpoint (Step = 0 -> Đánh dấu hoàn thành epoch)
         epoch_checkpoint_path = os.path.join(args.save_dir, "latest_checkpoint.pth")
         save_checkpoint(
             model,
             optimizer,
             scheduler,
-            scaler,
             epoch,
             0,
             best_val_loss,
